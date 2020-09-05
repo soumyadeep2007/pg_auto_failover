@@ -25,7 +25,6 @@
 #include "signals.h"
 #include "state.h"
 
-
 static bool keeper_state_check_postgres(Keeper *keeper,
 										PostgresControlData *control);
 
@@ -945,6 +944,32 @@ keeper_ensure_configuration(Keeper *keeper, bool postgresNotRunningIsOk)
 						  "replication settings, see above for details");
 				return false;
 			}
+		}
+	}
+	else if (state->current_role == SINGLE_STATE ||
+			 state->current_role == WAIT_PRIMARY_STATE ||
+			 state->current_role == JOIN_PRIMARY_STATE ||
+			 state->current_role == PRIMARY_STATE ||
+			 state->current_role == APPLY_SETTINGS_STATE)
+	{
+		/*
+		 * On the primary, the keeper's replication password may have been set
+		 * in the keeper config while the server was stopped. So, set the
+		 * password in the server catalog.
+		 */
+		if (!pg_setup_is_running(pgSetup))
+		{
+			log_warn("Failed to set replication password as server is not "
+					 "running. We will retry later");
+			return false;
+		}
+		if (!pgsql_set_password(&keeper->postgres.sqlClient,
+								PG_AUTOCTL_REPLICA_USERNAME,
+								keeper->config.replication_password))
+		{
+			log_error("Failed to set replication password, see above for details. "
+					  "We will retry later");
+			return false;
 		}
 	}
 
@@ -2139,6 +2164,7 @@ keeper_reload_configuration(Keeper *keeper, bool firstLoop)
 			{
 				log_warn("Failed to reload pg_autoctl configuration, "
 						 "see above for details");
+				return false;
 			}
 		}
 		else
@@ -2169,12 +2195,18 @@ keeper_reload_configuration(Keeper *keeper, bool firstLoop)
 void
 keeper_call_reload_hooks(Keeper *keeper, bool firstLoop)
 {
+	int errors = 0;
 	for (int index = 0; KeeperReloadHooks[index]; index++)
 	{
-		/* at the moment we ignore the return values from the reload hooks */
-		(void) (*KeeperReloadHooks[index])(keeper, firstLoop);
+		if (!(*KeeperReloadHooks[index])(keeper, firstLoop))
+		{
+			errors++;
+		}
 	}
 
-	/* we're done reloading now. */
-	asked_to_reload = 0;
+	/*
+	 * If there are no errors reloading the configuration, we are done.
+	 * Otherwise, we will have to retry the reload.
+	 */
+	asked_to_reload = (errors > 0);
 }

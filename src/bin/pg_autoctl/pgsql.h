@@ -280,6 +280,7 @@ bool pgsql_enable_synchronous_replication(PGSQL *pgsql);
 bool pgsql_disable_synchronous_replication(PGSQL *pgsql);
 bool pgsql_set_default_transaction_mode_read_only(PGSQL *pgsql);
 bool pgsql_set_default_transaction_mode_read_write(PGSQL *pgsql);
+bool pgsql_set_password(PGSQL *pgsql, const char *userName, const char *password);
 bool pgsql_checkpoint(PGSQL *pgsql);
 bool pgsql_get_hba_file_path(PGSQL *pgsql, char *hbaFilePath, int maxPathLength);
 bool pgsql_create_database(PGSQL *pgsql, const char *dbname, const char *owner);
@@ -304,7 +305,7 @@ bool pgsql_one_slot_has_reached_target_lsn(PGSQL *pgsql,
 										   bool *hasReachedLSN);
 bool pgsql_has_reached_target_lsn(PGSQL *pgsql, char *targetLSN,
 								  char *currentLSN, bool *hasReachedLSN);
-bool pgsql_identify_system(PGSQL *pgsql);
+bool pgsql_identify_system(PGSQL *pgsql, bool *unreachable);
 bool pgsql_listen(PGSQL *pgsql, char *channels[]);
 
 bool pgsql_alter_extension_update_to(PGSQL *pgsql,

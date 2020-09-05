@@ -1459,7 +1459,7 @@ pg_setup_standby_mode(uint32_t pg_control_version,
 	 * replication mode and issuing a IDENTIFY_SYSTEM command.
 	 */
 	if (!IS_EMPTY_STRING_BUFFER(replicationSource->primaryNode.host) &&
-		!pgctl_identify_system(replicationSource))
+		!pgctl_identify_system(replicationSource, NULL))
 	{
 		log_error("Failed to setup standby mode: can't connect to the primary. "
 				  "See above for details");
@@ -1989,7 +1989,7 @@ prepare_conninfo_sslmode(PQExpBuffer buffer, SSLOptions sslOptions)
  * the IDENTIFY_SYSTEM command to check that HBA is ready.
  */
 bool
-pgctl_identify_system(ReplicationSource *replicationSource)
+pgctl_identify_system(ReplicationSource *replicationSource, bool *unreachable)
 {
 	NodeAddress *primaryNode = &(replicationSource->primaryNode);
 
@@ -1997,6 +1997,11 @@ pgctl_identify_system(ReplicationSource *replicationSource)
 	char primaryConnInfoReplication[MAXCONNINFO] = { 0 };
 	PGSQL replicationClient = { 0 };
 	int len = 0;
+
+	if (unreachable)
+	{
+		*unreachable = false;
+	}
 
 	if (!prepare_primary_conninfo(primaryConnInfo,
 								  MAXCONNINFO,
@@ -2040,7 +2045,7 @@ pgctl_identify_system(ReplicationSource *replicationSource)
 		return false;
 	}
 
-	if (!pgsql_identify_system(&replicationClient))
+	if (!pgsql_identify_system(&replicationClient, unreachable))
 	{
 		/* errors have already been logged */
 		return false;

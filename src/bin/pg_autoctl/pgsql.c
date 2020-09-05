@@ -1602,6 +1602,85 @@ pgsql_set_default_transaction_mode_read_write(PGSQL *pgsql)
 
 
 /*
+ * pgsql_set_password sets the password for the given userName.
+ */
+bool
+pgsql_set_password(PGSQL *pgsql, const char *userName, const char *password)
+{
+	PQExpBuffer command = NULL;
+	PGconn *connection = NULL;
+	char *escapedUsername = NULL;
+	char *escapedPassword = NULL;
+	bool success = true;
+
+	/* open a connection upfront since it is needed by PQescape functions */
+	connection = pgsql_open_connection(pgsql);
+	if (connection == NULL)
+	{
+		/* error message was logged in pgsql_open_connection */
+		return false;
+	}
+	escapedUsername = PQescapeIdentifier(connection, userName, strlen(userName));
+	if (escapedUsername == NULL)
+	{
+		log_error("Failed to set password for username \"%s\": %s", userName,
+				  PQerrorMessage(connection));
+
+		success = false;
+		goto cleanup;
+	}
+
+	escapedPassword = PQescapeLiteral(connection, password, strlen(password));
+	if (escapedPassword == NULL)
+	{
+		log_error("Failed to set password for username \"%s\": %s", userName,
+				  PQerrorMessage(connection));
+
+		success = false;
+		goto cleanup;
+	}
+
+	command = createPQExpBuffer();
+	appendPQExpBuffer(command, "ALTER USER %s", escapedUsername);
+	appendPQExpBuffer(command, " PASSWORD %s", escapedPassword);
+
+	/* memory allocation could have failed while building string */
+	if (PQExpBufferBroken(command))
+	{
+		log_error("Failed to allocate memory");
+		success = false;
+		goto cleanup;
+	}
+
+	log_info("Setting the password for user: \"%s\"", userName);
+
+	if (!pgsql_execute(pgsql, command->data))
+	{
+		log_error("Failed to set password for userName \"%s\" "
+				  "see above for details", userName);
+		success = false;
+		goto cleanup;
+	}
+
+cleanup:
+	if (escapedUsername)
+	{
+		PQfreemem(escapedUsername);
+	}
+	if (escapedPassword)
+	{
+		PQfreemem(escapedPassword);
+	}
+	if (command)
+	{
+		destroyPQExpBuffer(command);
+	}
+	pgsql_finish(pgsql);
+	return success;
+}
+
+
+/*
  * pgsql_checkpoint runs a CHECKPOINT command on postgres to trigger a checkpoint.
  */
 bool
@@ -2555,17 +2634,35 @@ typedef struct IdentifySystem
  * contain the 'replication=1' parameter.
  */
 bool
-pgsql_identify_system(PGSQL *pgsql)
+pgsql_identify_system(PGSQL *pgsql, bool *unreachable)
 {
 	IdentifySystem context = { 0 };
 	char *sql = "IDENTIFY_SYSTEM";
 
 	PGconn *connection = NULL;
 	PGresult *result = NULL;
+	PGPing pingResult;
 
+	if (unreachable)
+	{
+		*unreachable = false;
+	}
 	connection = pgsql_open_connection(pgsql);
 	if (connection == NULL)
 	{
+		if (unreachable)
+		{
+			/*
+			 * Perform a PQping to determine why the connection open attempt was
+			 * unsuccessful.
+			 */
+			pingResult = PQping(pgsql->connectionString);
+			if (pingResult == PQPING_NO_RESPONSE)
+			{
+				*unreachable = true;
+			}
+		}
+
 		/* error message was logged in pgsql_open_connection */
 		return false;
 	}

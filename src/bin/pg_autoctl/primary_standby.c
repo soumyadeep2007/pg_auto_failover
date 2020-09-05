@@ -1142,7 +1142,7 @@ standby_follow_new_primary(LocalPostgresServer *postgres)
 	/* when we have a primary, only proceed if we can reach it */
 	if (!IS_EMPTY_STRING_BUFFER(replicationSource->primaryNode.host))
 	{
-		if (!pgctl_identify_system(replicationSource))
+		if (!pgctl_identify_system(replicationSource, NULL))
 		{
 			log_error("Failed to establish a replication connection "
 					  "to the new primary, see above for details");
@@ -1308,7 +1308,7 @@ standby_restart_with_current_replication_source(LocalPostgresServer *postgres)
 	/* when we have a primary, only proceed if we can reach it */
 	if (!IS_EMPTY_STRING_BUFFER(replicationSource->primaryNode.host))
 	{
-		if (!pgctl_identify_system(replicationSource))
+		if (!pgctl_identify_system(replicationSource, NULL))
 		{
 			log_error("Failed to establish a replication connection "
 					  "to the primary node, see above for details");
